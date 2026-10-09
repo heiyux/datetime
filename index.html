@@ -1,0 +1,413 @@
+<!doctype html>
+<!--
+  时间间隔计算器 — 主页面结构
+  三页单页应用：配置页 / 结果页 / 关于页，顶部 Tab 栏切换
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 移动端视口设置，禁止缩放 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>时间间隔计算器</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- 主容器：所有页面都在里面，max-width 500px 居中 -->
+    <div class="container">
+
+      <!-- ========== 配置页（默认显示） ========== -->
+      <div class="page active" id="page-config">
+
+        <!-- 事件下拉选择器（配置页用） -->
+        <div class="form-group">
+          <div class="form-inline">
+            <label>下拉切换</label>
+            <div class="event-selector" id="eventSelectorConfig" style="flex:1">
+              <button class="event-selector-btn" onclick="toggleEventDropdown('config')">
+                <span id="currentEventNameConfig">事件1</span>
+                <span class="arrow">▾</span>
+              </button>
+              <!-- 下拉选项动态渲染 -->
+              <div class="event-dropdown" id="eventDropdownConfig"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 事件名称输入（≤8汉字） -->
+        <div class="form-group" style="margin-top:16px">
+          <div class="form-inline">
+            <label>事件名称</label>
+            <input type="text" id="eventName" maxlength="8" placeholder="≤8个汉字" />
+          </div>
+        </div>
+
+        <!-- 间隔时长（两次事件之间的间隔） -->
+        <div class="form-group">
+          <div class="form-inline">
+            <label>间隔时长</label>
+            <input type="time" id="interval" step="1" value="04:00:00" readonly onclick="openWheelFor(this)" />
+          </div>
+        </div>
+
+        <!-- 锚点开始时间（日期+时间） -->
+        <div class="form-group">
+          <div class="form-inline">
+            <label>开始时间</label>
+            <div class="time-row" style="flex: 1; margin-bottom: 0">
+              <div><input type="date" id="startDate" readonly onclick="openWheelFor(this)" /></div>
+              <div><input type="time" id="startTime" step="1" readonly onclick="openWheelFor(this)" /></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 每次事件的持续时间 -->
+        <div class="form-group">
+          <div class="form-inline">
+            <label>持续时间</label>
+            <input type="time" id="duration" step="1" value="00:30:00" readonly onclick="openWheelFor(this)" />
+          </div>
+        </div>
+
+        <!-- 锚点次数（开始时间对应的是第几次） -->
+        <div class="form-group">
+          <div class="form-inline">
+            <label>该次次数</label>
+            <input type="number" id="anchorCount" value="1" min="1" step="1" />
+          </div>
+        </div>
+
+        <!-- 计算模式：按次数 / 按范围 -->
+        <div class="form-group">
+          <div class="form-inline">
+            <label>计算模式</label>
+            <div class="mode-selector">
+              <label>
+                <input type="radio" name="calcMode" value="count" checked onchange="switchMode()" />
+                按次数
+              </label>
+              <label>
+                <input type="radio" name="calcMode" value="range" onchange="switchMode()" />
+                按范围
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 按次数模式：计算 N 次 -->
+        <div class="form-group" id="calcCountGroup">
+          <div class="form-inline">
+            <label for="calcCount">计算次数</label>
+            <input type="number" id="calcCount" value="100" min="1" step="1" />
+          </div>
+        </div>
+
+        <!-- 按范围模式：开始次数（默认隐藏） -->
+        <div class="form-group" id="rangeStartGroup" style="display: none">
+          <div class="form-inline">
+            <label for="rangeStart">开始次数</label>
+            <input type="number" id="rangeStart" value="1" min="1" step="1" />
+          </div>
+        </div>
+
+        <!-- 按范围模式：结束次数（默认隐藏） -->
+        <div class="form-group" id="rangeEndGroup" style="display: none">
+          <div class="form-inline">
+            <label for="rangeEnd">结束次数</label>
+            <input type="number" id="rangeEnd" value="100" min="1" step="1" />
+          </div>
+        </div>
+
+        <!-- 标记点与时差（可选，默认折叠） -->
+        <div class="marker-section">
+          <div class="marker-title" onclick="toggleMarkers()" style="cursor:pointer">
+            <span id="markerToggleIcon">▸</span> 标记点与时差（可选）
+          </div>
+          <div class="marker-body" id="markerBody" style="display:none">
+            <!-- 每个标记点：名称(≤4字) + 偏移时间 -->
+            <div class="marker-row" id="markerRow1">
+              <input type="text" class="marker-name" id="markerName1" maxlength="4" placeholder="名称(≤4字)" dir="ltr" />
+              <input type="time" class="marker-offset" id="markerOffset1" step="1" value="00:00:00" dir="ltr" readonly onclick="openWheelFor(this)" />
+            </div>
+            <div class="marker-row" id="markerRow2">
+              <input type="text" class="marker-name" id="markerName2" maxlength="4" placeholder="名称(≤4字)" dir="ltr" />
+              <input type="time" class="marker-offset" id="markerOffset2" step="1" value="00:00:00" dir="ltr" readonly onclick="openWheelFor(this)" />
+            </div>
+            <div class="marker-row" id="markerRow3">
+              <input type="text" class="marker-name" id="markerName3" maxlength="4" placeholder="名称(≤4字)" dir="ltr" />
+              <input type="time" class="marker-offset" id="markerOffset3" step="1" value="00:00:00" dir="ltr" readonly onclick="openWheelFor(this)" />
+            </div>
+
+            <!-- 时差修正（设备时间与系统时间的差值） -->
+            <div class="offset-divider"></div>
+            <div class="offset-title">时差修正（设备时间 - 系统时间）</div>
+            <div class="marker-row">
+              <input type="time" class="marker-offset" id="timeOffsetVal" step="1" value="00:00:00" dir="ltr" style="width:110px !important" readonly onclick="openWheelFor(this)" />
+              <label class="offset-neg-label">
+                <input type="checkbox" id="timeOffsetNeg" /> 负值
+              </label>
+            </div>
+            <!-- 时差应用范围：关闭 / 仅倒计时 / 列表+倒计时 -->
+            <div class="mode-selector offset-mode" style="margin-top:8px">
+              <label>
+                <input type="radio" name="timeOffsetMode" value="off" checked />
+                关闭
+              </label>
+              <label>
+                <input type="radio" name="timeOffsetMode" value="countdown" />
+                仅倒计时
+              </label>
+              <label>
+                <input type="radio" name="timeOffsetMode" value="both" />
+                列表+倒计时
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 确认计算按钮 -->
+        <button class="btn-primary" onclick="calculate()">确定</button>
+      </div>
+
+      <!-- ========== 结果页（全屏固定，内部独立滚动） ========== -->
+      <div class="page" id="page-result">
+        <div class="result-page-inner">
+
+          <!-- 头部：固定不滚动（事件切换 + 操作按钮 + 日期导航） -->
+          <div class="result-page-header">
+            <!-- 事件下拉选择器（结果页用） -->
+            <div class="form-inline" style="margin-bottom:10px">
+              <label>下拉切换</label>
+              <div class="event-selector" id="eventSelectorResult" style="flex:1">
+                <button class="event-selector-btn" onclick="toggleEventDropdown('result')">
+                  <span id="currentEventNameResult">事件1</span>
+                  <span class="arrow">▾</span>
+                </button>
+                <div class="event-dropdown" id="eventDropdownResult"></div>
+              </div>
+            </div>
+
+            <!-- 倒计时卡片（有数据时才显示） -->
+            <div class="countdown-card" id="countdownCard" style="display:none">
+              <!-- 第一行：事件名 | 时差状态 | 次序 | 状态 -->
+              <div class="countdown-top">
+                <span class="cd-event-name" id="cdEventName">事件1</span>
+                <span class="cd-offset-status" id="cdOffsetStatus"></span>
+                <span class="cd-seq" id="cdSeq">第1次</span>
+                <span class="cd-status" id="cdStatus">进行中</span>
+              </div>
+              <!-- 第二行：左侧标签 + 中间倒计时 + 右侧设置 -->
+              <div class="countdown-bottom">
+                <div class="cd-label-col">
+                  <div class="cd-label" id="cdLabel">距离结束</div>
+                  <div class="cd-marker" id="cdMarker"></div>
+                </div>
+                <div class="cd-timer" id="cdTimer" onclick="locateNearest()" style="cursor:pointer">--:--:--</div>
+                <button class="cd-settings" onclick="switchPage('page-config')">设置</button>
+              </div>
+            </div>
+
+            <!-- 有数据时才显示的操作区 -->
+            <div id="resultHeaderControls" style="display:none">
+              <div class="result-header">
+                <button class="btn-outline" id="btnNearest" onclick="locateNearest()">
+                  找到最近一次
+                </button>
+                <button class="btn-outline" id="btnFilter" onclick="toggleFilterPanel()">
+                  筛选 <span id="filterBadge" class="filter-badge" style="display:none">1</span>
+                </button>
+                <!-- 视图切换：全部 / 单日 -->
+                <div class="segmented">
+                  <button id="btnViewAll" onclick="switchView('all')">看全部</button>
+                  <button id="btnViewDay" onclick="switchView('day')">看单日</button>
+                </div>
+              </div>
+              <!-- 单日视图：日期切换导航 -->
+              <div class="day-navigator" id="dayNavigator">
+                <button class="btn-day-nav" onclick="changeDay(-1)">前一日</button>
+                <button class="btn-day-display" id="btnDayDisplay" onclick="showDatePicker()">10月6日</button>
+                <button class="btn-day-nav" onclick="changeDay(1)">后一日</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 内容区：表格在这里独立滚动 -->
+          <div class="result-page-scroll">
+            <!-- 无数据提示 -->
+            <div id="resultEmpty" class="no-data-page" style="display: none">
+              <p>暂无数据</p>
+              <button class="btn-go-config" onclick="switchPage('page-config')">去配置</button>
+            </div>
+
+            <!-- 有数据时的表格区 -->
+            <div id="result" style="display: none">
+              <!-- 结果表格（单表格，thead sticky 吸顶，前两列 sticky 固定） -->
+              <div id="resultContent">
+                <table class="result-table" dir="ltr">
+                  <thead id="resultHead"></thead>
+                  <tbody id="resultBody"></tbody>
+                </table>
+              </div>
+
+              <!-- 单日视图无数据提示 -->
+              <div class="no-data" id="noData" style="display: none">当日无数据</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ========== 关于页（说明文档） ========== -->
+      <div class="page" id="page-about">
+        <div class="about-content">
+          <h3>本工具的作用</h3>
+          <p>时间间隔计算器用于推算按固定间隔重复发生的事件时间点。输入锚点时间和间隔时长，即可批量计算出从任意次数开始到任意次数结束的每次事件时间，并支持标记点、倒计时和筛选。</p>
+
+          <h3>用途</h3>
+          <ul>
+            <li>周期性设备动作时间推算（如每隔4小时触发一次）</li>
+            <li>排班、轮班、循环任务的时间表生成</li>
+            <li>配合时差修正，对齐设备时间与本地系统时间</li>
+            <li>通过倒计时卡片快速查看下一次事件还有多久</li>
+          </ul>
+
+          <h3>操作说明</h3>
+          <ul>
+            <li><b>新建事件</b>：在事件下拉中点击"新建事件"，最多5个，每个独立缓存</li>
+            <li><b>配置参数</b>：设置间隔时长、锚点开始时间、持续时间、该次次数</li>
+            <li><b>计算模式</b>：按次数（往后算N次）或按范围（指定起止次数）</li>
+            <li><b>标记点</b>：最多3个，在折叠区展开，基于开始时间偏移计算</li>
+            <li><b>时差修正</b>：在标记点折叠区下方设置，可选关闭/仅倒计时/列表+倒计时</li>
+            <li><b>找到最近一次</b>：优先定位正在进行中的事件，否则定位下一次未发生事件</li>
+            <li><b>视图切换</b>：全部视图显示所有，单日视图只看指定日期</li>
+            <li><b>倒计时卡片</b>：点击倒计时数字可直接定位到目标行</li>
+          </ul>
+
+          <h3>筛选规则</h3>
+          <ul>
+            <li>点击结果页"筛选"按钮打开筛选面板，条件按事件独立缓存</li>
+            <li><b>时间段</b>：事件开始或结束时间任意一个在范围内即通过</li>
+            <li><b>单双日</b>：开始日或结束日任意一个符合即通过</li>
+            <li><b>星期</b>：开始日或结束日任意一个匹配选中星期即通过（可多选）</li>
+            <li><b>次序范围</b>：按次序号筛选</li>
+            <li>多个条件之间为"且"关系；点击"清除筛选"重置全部条件</li>
+          </ul>
+
+          <h3>权限声明</h3>
+          <ul>
+            <li>本工具完全在本地浏览器运行，不请求网络</li>
+            <li>数据仅存储于您设备的 localStorage 中，不会上传</li>
+            <li>不收集、不存储、不传输任何个人信息</li>
+          </ul>
+
+          <h3>免责声明</h3>
+          <ul>
+            <li>本工具仅供学习和参考使用</li>
+            <li>计算结果基于您输入的参数，请自行验证准确性</li>
+            <li>时差修正为本地偏移计算，不对设备实际时间偏差负责</li>
+            <li>开发者不对因使用本工具造成的任何损失承担责任</li>
+          </ul>
+
+          <h3>数据备份与恢复</h3>
+          <ul>
+            <li>备份：导出所有事件配置与偏好（不含计算结果）到 txt 文件</li>
+            <li>恢复：选择备份文件，确认后覆盖当前所有数据</li>
+            <li>请不要加载来源不明或被修改过的备份文件</li>
+          </ul>
+          <div style="display:flex;gap:10px;margin-top:10px">
+            <button class="btn-outline" style="flex:1" onclick="backupData()">备份数据</button>
+            <button class="btn-outline" style="flex:1" onclick="document.getElementById('restoreFileInput').click()">恢复数据</button>
+            <input type="file" id="restoreFileInput" accept=".txt" style="display:none" onchange="restoreData(event)" />
+          </div>
+
+          <p style="text-align:center;color:#bbb;font-size:12px;margin-top:24px">v1.0.0</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 筛选面板（底部弹出） -->
+    <div class="filter-mask" id="filterMask" onclick="toggleFilterPanel()"></div>
+    <div class="filter-panel" id="filterPanel">
+      <div class="filter-title">筛选条件</div>
+
+      <!-- 时间段 -->
+      <div class="filter-row">
+        <label>时间段</label>
+        <div class="filter-time-range">
+          <input type="time" id="filterTimeStart" step="1" value="00:00:00" readonly onclick="openWheelFor(this)" />
+          <span>至</span>
+          <input type="time" id="filterTimeEnd" step="1" value="23:59:59" readonly onclick="openWheelFor(this)" />
+        </div>
+      </div>
+
+      <!-- 单双日 -->
+      <div class="filter-row">
+        <label>单双日</label>
+        <div class="mode-selector">
+          <label><input type="radio" name="filterOddEven" value="" checked />全部</label>
+          <label><input type="radio" name="filterOddEven" value="odd" />单日</label>
+          <label><input type="radio" name="filterOddEven" value="even" />双日</label>
+        </div>
+      </div>
+
+      <!-- 星期几（多选） -->
+      <div class="filter-row">
+        <label>星期</label>
+        <div class="weekday-picker" id="weekdayPicker">
+          <button type="button" data-d="1">一</button>
+          <button type="button" data-d="2">二</button>
+          <button type="button" data-d="3">三</button>
+          <button type="button" data-d="4">四</button>
+          <button type="button" data-d="5">五</button>
+          <button type="button" data-d="6">六</button>
+          <button type="button" data-d="0">日</button>
+        </div>
+      </div>
+
+      <!-- 次序范围 -->
+      <div class="filter-row">
+        <label>次序范围</label>
+        <div class="filter-seq-range">
+          <input type="number" id="filterSeqStart" placeholder="开始" min="1" />
+          <span>至</span>
+          <input type="number" id="filterSeqEnd" placeholder="结束" min="1" />
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="filter-actions">
+        <button class="btn-outline" onclick="clearFilter()">清除筛选</button>
+        <button class="btn-primary" style="margin:0" onclick="applyFilter()">应用</button>
+      </div>
+    </div>
+
+    <!-- 回到顶部悬浮按钮 -->
+    <button class="btn-top" id="btnTop" onclick="scrollToTop()">↑</button>
+
+    <!-- 底部 Tab 导航栏（三个页面切换） -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-page="page-config">
+        <span class="icon">⚙️</span>配置
+      </button>
+      <button class="tab-btn" data-page="page-result">
+        <span class="icon">📊</span>结果
+      </button>
+      <button class="tab-btn" data-page="page-about">
+        <span class="icon">ℹ️</span>关于
+      </button>
+    </nav>
+
+    <!-- 三列滚轮选择器（通用时间/日期） -->
+    <div class="wheel-mask" id="wheelMask" onclick="closeWheel()"></div>
+    <div class="wheel-panel" id="wheelPanel">
+      <div class="wheel-title" id="wheelTitle">选择</div>
+      <div class="wheel-body" id="wheelBody"></div>
+      <div class="wheel-actions">
+        <button class="btn-cancel" onclick="closeWheel()">取消</button>
+        <button class="btn-ok" onclick="confirmWheel()">确定</button>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
