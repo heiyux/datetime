@@ -8,8 +8,34 @@ const EVENTS_KEY = "tc_events";       // 事件列表 [{id, name}]
 const EVENT_PREFIX = "tc_event_";     // 单事件数据前缀，完整键 = 前缀+id
 const CURRENT_KEY = "tc_currentEvent"; // 当前选中的事件 ID
 const SORT_KEY = "tc_sort";             // 下拉排序偏好
-const APP_VERSION = "1.0.0";            // 应用版本号
+const APP_VERSION = "1.1.0";            // 应用版本号
 const MAX_EVENTS = 20;                  // 最多事件数
+const VERSION_KEY = "tc_app_version";   // 已确认过的应用版本号（首次/升级判断）
+
+// ========== 版本更新日志（按版本从旧到新维护，跨版本升级时累积展示） ==========
+const CHANGELOG = {
+  // 版本号须为数组中"上一版本之后"的顺序
+  order: ["1.1.0"],
+  notes: {
+    "1.1.0": [
+      "导航栏移至屏幕底部，操作更顺手",
+      "备份与恢复改用剪贴板，无需下载文件",
+      "修复事件按「建立顺序」排序时倒序无效的问题",
+      "事件排序新增「按间隔时长」，支持正/倒序",
+      "恢复备份时可勾选部分事件，不再强制全部覆盖",
+      "新增版本检查：首次使用展示注意事项，升级展示更新内容",
+    ],
+  },
+};
+
+/** 首次使用（本地无版本号）展示的简要注意事项 */
+const FIRST_TIPS = [
+  "本工具完全在本地运行、不联网；数据仅保存在本机浏览器中，不会上传",
+  "在「配置」页填写事件名称、间隔时长、开始时间等，点「确定」即可生成时间表",
+  "最多可创建 20 个事件，每个事件独立保存配置",
+  "「结果」页查看时间表与倒计时，「关于」页有完整操作说明",
+  "备份会复制到剪贴板，请自行粘贴保存；恢复时可勾选部分事件",
+];
 
 // ========== 全局状态 ==========
 let eventList = [];           // 所有事件 [{id, name}]
@@ -190,7 +216,11 @@ function createEvent(name) {
     alert(`最多只能创建 ${MAX_EVENTS} 个事件`);
     return null;
   }
-  const id = "evt_" + Date.now();
+  // 时间戳(base36)+随机串，并校验未与现有事件/缓存冲突，避免同毫秒连续新建撞 ID
+  let id;
+  do {
+    id = "evt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  } while (eventList.some((e) => e.id === id) || localStorage.getItem(EVENT_PREFIX + id));
   const data = createDefaultEventData();
   data.name = name;
   eventList.push({ id, name });
@@ -437,7 +467,7 @@ function getEventStatus(id) {
   };
 }
 
-// 排序状态：{ by: 'status'|'name'|'order', asc: true }
+// 排序状态：{ by: 'status'|'name'|'interval'|'order', asc: true }
 let sortPref = loadSortPref();
 function loadSortPref() {
   try {
@@ -459,19 +489,28 @@ function statusWeight(cls) {
 }
 
 function getSortedEventList() {
-  const arr = eventList.slice();
-  arr.sort((a, b) => {
+  // 保留原始建立索引，供"顺序"排序与稳定排序使用
+  const indexed = eventList.map((e, i) => ({ e, i }));
+  indexed.sort((a, b) => {
     let cmp = 0;
     if (sortPref.by === "status") {
-      cmp = statusWeight(getEventStatus(a.id).cls) - statusWeight(getEventStatus(b.id).cls);
+      cmp = statusWeight(getEventStatus(a.e.id).cls) - statusWeight(getEventStatus(b.e.id).cls);
     } else if (sortPref.by === "name") {
-      cmp = (a.name || "").localeCompare(b.name || "", "zh");
+      cmp = (a.e.name || "").localeCompare(b.e.name || "", "zh");
+    } else if (sortPref.by === "interval") {
+      const da = loadEventData(a.e.id);
+      const db = loadEventData(b.e.id);
+      const ia = da && da.interval ? parseTimeToMs(da.interval) : 0;
+      const ib = db && db.interval ? parseTimeToMs(db.interval) : 0;
+      cmp = ia - ib;
     } else {
-      cmp = 0; // 建立顺序保持原数组顺序
+      cmp = a.i - b.i; // 建立顺序：正序先建立在前，倒序后建立在前
     }
+    // 并列时按建立索引兜底，保证排序稳定
+    if (cmp === 0) cmp = a.i - b.i;
     return sortPref.asc ? cmp : -cmp;
   });
-  return arr;
+  return indexed.map((x) => x.e);
 }
 
 function renderEventDropdown(page) {
@@ -490,10 +529,10 @@ function renderEventDropdown(page) {
   html += `</div>`;
 
   // 排序栏
-  const sortLabels = { status: "状态", name: "名称", order: "顺序" };
+  const sortLabels = { status: "状态", name: "名称", interval: "间隔", order: "顺序" };
   html += `<div class="sort-bar">`;
   html += `<span class="sort-label">排序</span>`;
-  ["status", "name", "order"].forEach((k) => {
+  ["status", "name", "interval", "order"].forEach((k) => {
     const active = sortPref.by === k ? " active" : "";
     html += `<button class="sort-btn${active}" onclick="event.stopPropagation();setSortBy('${k}')">${sortLabels[k]}</button>`;
   });
@@ -1572,9 +1611,7 @@ function backupData() {
     eventList: eventList,
     sort: sortPref,
   };
-  // 概览文本
   const d = new Date(payload.exportedAt);
-  const stamp = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}_${String(d.getHours()).padStart(2,"0")}${String(d.getMinutes()).padStart(2,"0")}${String(d.getSeconds()).padStart(2,"0")}`;
   let overview = `时间间隔计算器备份\n`;
   overview += `版本: ${APP_VERSION}\n`;
   overview += `导出时间: ${d.toLocaleString()}\n`;
@@ -1587,74 +1624,302 @@ function backupData() {
   });
   overview += `---- 数据 ----\n`;
   const fullText = overview + JSON.stringify(payload);
-  const blob = new Blob([fullText], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `tc_backup_${stamp}.txt`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  // ========== 复制到剪贴板（适配 WebView，失败时弹出手动复制面板） ==========
+  copyTextToClipboard(fullText).then((ok) => {
+    if (ok) {
+      alert("备份内容已复制到剪贴板。\n请立即粘贴到备忘录、文件或其他设备中妥善保存。");
+    } else {
+      openTextPanel("backup", fullText);
+    }
+  });
 }
 
-function restoreData(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const text = e.target.result;
-    // 找到 JSON 起始位置（跳过概览）
-    const idx = text.indexOf("{");
-    if (idx === -1) { alert("文件格式错误，未找到数据"); return; }
-    let payload;
-    try {
-      payload = JSON.parse(text.slice(idx));
-    } catch {
-      alert("文件解析失败，可能已被修改或损坏");
-      return;
+
+// ========== 剪贴板工具 ==========
+
+/**
+ * 复制文本到剪贴板（返回是否成功）
+ * 优先使用 Clipboard API；失败/不可用时降级为临时 textarea + execCommand
+ */
+async function copyTextToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
     }
-    if (!payload.version || !payload.events) {
-      alert("备份数据不完整");
-      return;
+  } catch {}
+  // 兜底：隐藏 textarea + execCommand('copy')
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-9999px";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// ========== 通用文本面板（恢复粘贴 / 备份手动复制） ==========
+
+let textPanelMode = "restore"; // 'restore' | 'backup'
+
+/** 打开文本面板；mode=backup 时 text 为待复制内容 */
+function openTextPanel(mode, text) {
+  textPanelMode = mode;
+  const titleEl = document.getElementById("textPanelTitle");
+  const hintEl = document.getElementById("textPanelHint");
+  const textEl = document.getElementById("textPanelText");
+  const okEl = document.getElementById("textPanelOk");
+  if (mode === "backup") {
+    titleEl.textContent = "手动复制备份";
+    hintEl.textContent = "无法自动复制，请长按下方文本选择并复制，然后粘贴到备忘录或文件中妥善保存：";
+    textEl.value = text || "";
+    textEl.readOnly = true;
+    textEl.placeholder = "";
+    okEl.textContent = "点击全选";
+  } else {
+    titleEl.textContent = "粘贴备份内容";
+    hintEl.textContent = "无法自动读取剪贴板，请把之前复制的备份文本粘贴到下方：";
+    textEl.value = "";
+    textEl.readOnly = false;
+    textEl.placeholder = "在此粘贴备份内容（概览+JSON 或纯 JSON）";
+    okEl.textContent = "确定恢复";
+  }
+  document.getElementById("textPanelMask").classList.add("open");
+  document.getElementById("textPanel").classList.add("open");
+}
+
+/** 关闭文本面板 */
+function closeTextPanel() {
+  document.getElementById("textPanelMask").classList.remove("open");
+  document.getElementById("textPanel").classList.remove("open");
+}
+
+/** 面板主按钮：backup=全选并尝试复制；restore=取文本执行恢复 */
+function confirmTextPanel() {
+  const textEl = document.getElementById("textPanelText");
+  if (textPanelMode === "backup") {
+    textEl.focus();
+    textEl.select();
+    try { textEl.setSelectionRange(0, textEl.value.length); } catch {}
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch {}
+    if (ok) {
+      closeTextPanel();
+      alert("备份内容已复制，请立即粘贴到备忘录、文件或其他设备中妥善保存。");
+    } else {
+      alert("请长按下方文本，手动选择并复制。");
     }
-    // 展示解析结果
-    let summary = `检测到备份文件 v${payload.version}\n`;
-    summary += `事件数量: ${payload.eventList ? payload.eventList.length : Object.keys(payload.events).length}\n`;
-    summary += `事件列表:\n`;
-    const list = payload.eventList || Object.keys(payload.events).map((id) => ({ id, name: payload.events[id].name || "未命名" }));
-    list.forEach((e, i) => {
-      summary += `  ${i+1}. ${e.name}\n`;
-    });
-    summary += `\n⚠️ 此操作将覆盖当前所有数据！\n请确保备份文件来源可信且未被修改。`;
-    if (!confirm(summary)) return;
-    // 执行恢复
-    // 清除现有数据
-    eventList.forEach((e) => deleteEventData(e.id));
-    // 写入新数据
-    let recalcCount = 0;
-    list.forEach((e) => {
-      const d = payload.events[e.id];
-      if (!d) return;
-      // 启用的事件：清掉旧 timestamps 并自动重算
-      if (!d.stopped) {
-        d.timestamps = [];
-        if (silentRecalc(d)) recalcCount++;
-      }
-      saveEventData(e.id, d);
-    });
-    eventList = list;
-    saveEventList();
-    if (payload.sort) { sortPref = payload.sort; saveSortPref(); }
-    // 选第一个事件
-    currentEventId = list[0] ? list[0].id : null;
-    if (currentEventId) localStorage.setItem(CURRENT_KEY, currentEventId);
-    else localStorage.removeItem(CURRENT_KEY);
-    alert(`恢复完成，已自动计算 ${recalcCount} 个启用事件`);
-    location.reload();
-  };
-  reader.readAsText(file);
-  event.target.value = "";
+    return;
+  }
+  const text = textEl.value;
+  if (!text || text.indexOf("{") === -1) {
+    alert("未检测到备份数据，请粘贴完整的备份内容");
+    return;
+  }
+  closeTextPanel();
+  handleRestoreText(text);
+}
+
+// ========== 恢复（从剪贴板） ==========
+
+/** 点击"恢复数据"：先尝试自动读取剪贴板，失败/内容不符则弹粘贴面板 */
+function restoreFromClipboard() {
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    navigator.clipboard.readText()
+      .then((text) => {
+        if (text && text.indexOf("{") !== -1) {
+          handleRestoreText(text);
+        } else {
+          openTextPanel("restore");
+        }
+      })
+      .catch(() => openTextPanel("restore"));
+  } else {
+    openTextPanel("restore");
+  }
+}
+
+/** 解析备份文本 → 打开勾选面板（不再强制全部覆盖） */
+function handleRestoreText(text) {
+  // 找到 JSON 起始位置（跳过概览）
+  const idx = text.indexOf("{");
+  if (idx === -1) { alert("内容格式错误，未找到数据"); return; }
+  let payload;
+  try {
+    payload = JSON.parse(text.slice(idx));
+  } catch {
+    alert("内容解析失败，可能已被修改或损坏");
+    return;
+  }
+  if (!payload.version || !payload.events) {
+    alert("备份数据不完整");
+    return;
+  }
+  openRestoreSelect(payload);
+}
+
+// ========== 恢复选择面板（勾选要恢复的事件） ==========
+
+let restorePayload = null; // 当前待恢复的备份数据
+
+/** 从 payload 取事件清单（兼容无 eventList 的备份） */
+function getBackupEventList(payload) {
+  return payload.eventList ||
+    Object.keys(payload.events).map((id) => ({ id, name: payload.events[id].name || "未命名" }));
+}
+
+/** 打开恢复勾选面板 */
+function openRestoreSelect(payload) {
+  restorePayload = payload;
+  const list = getBackupEventList(payload);
+  const box = document.getElementById("rsList");
+  let html = "";
+  list.forEach((e) => {
+    const d = payload.events[e.id];
+    const interval = d && d.interval ? d.interval : "--:--:--";
+    const exists = eventList.some((x) => x.id === e.id);
+    const tag = exists
+      ? `<span class="rs-tag rs-tag-over">覆盖</span>`
+      : `<span class="rs-tag rs-tag-new">新增</span>`;
+    html += `<label class="rs-row">
+      <input type="checkbox" class="rs-check" value="${e.id}" checked onchange="updateRestoreCount()" />
+      <span class="rs-name">${escapeHtml(d && d.name ? d.name : e.name)}</span>
+      <span class="rs-interval">${interval}</span>
+      ${tag}
+    </label>`;
+  });
+  box.innerHTML = html;
+  document.getElementById("rsSubtitle").textContent =
+    `检测到备份内容 v${payload.version}，共 ${list.length} 个事件，请勾选要恢复的：`;
+  document.getElementById("rsMask").classList.add("open");
+  document.getElementById("rsPanel").classList.add("open");
+  updateRestoreCount();
+}
+
+/** 关闭恢复选择面板 */
+function closeRestoreSelect() {
+  document.getElementById("rsMask").classList.remove("open");
+  document.getElementById("rsPanel").classList.remove("open");
+  restorePayload = null;
+}
+
+/** 全选 / 全不选 */
+function setRestoreCheckAll(checked) {
+  document.querySelectorAll("#rsList .rs-check").forEach((c) => { c.checked = checked; });
+  updateRestoreCount();
+}
+
+/** 更新已选计数与确认按钮可用状态 */
+function updateRestoreCount() {
+  const n = document.querySelectorAll("#rsList .rs-check:checked").length;
+  document.getElementById("rsCount").textContent = `已选 ${n} 项`;
+  document.getElementById("rsConfirm").disabled = n === 0;
+}
+
+/** 确认：只恢复勾选事件；同 ID 覆盖、新 ID 追加、未勾选保留 */
+function confirmRestoreSelect() {
+  if (!restorePayload) return;
+  const payload = restorePayload;
+  const list = getBackupEventList(payload);
+  const selected = new Set();
+  document.querySelectorAll("#rsList .rs-check:checked").forEach((c) => selected.add(c.value));
+  if (selected.size === 0) return;
+
+  let recalcCount = 0, added = 0, overwritten = 0;
+  list.forEach((e) => {
+    if (!selected.has(e.id)) return;
+    const d = payload.events[e.id];
+    if (!d) return;
+    const evtName = d.name || e.name;
+    const idx = eventList.findIndex((x) => x.id === e.id);
+    const exists = idx !== -1;
+    // 启用的事件：清掉旧 timestamps 并自动重算
+    if (!d.stopped) {
+      d.timestamps = [];
+      if (silentRecalc(d)) recalcCount++;
+    }
+    saveEventData(e.id, d);
+    if (exists) {
+      eventList[idx] = { id: e.id, name: evtName }; // 覆盖：更新数据与名称
+      overwritten++;
+    } else {
+      eventList.push({ id: e.id, name: evtName });   // 新增：追加
+      added++;
+    }
+  });
+  saveEventList();
+  // 排序偏好保持当前不变；选中本次恢复的第一个事件
+  const first = list.find((e) => selected.has(e.id));
+  if (first) {
+    currentEventId = first.id;
+    localStorage.setItem(CURRENT_KEY, currentEventId);
+  }
+  alert(`恢复完成：新增 ${added} 个，覆盖 ${overwritten} 个；已自动计算 ${recalcCount} 个启用事件。`);
+  location.reload();
+}
+
+// ========== 版本检查与信息弹窗 ==========
+
+/** 收集从 storedVersion 之后到当前版本的全部更新条目（未知旧版本则展示全部） */
+function collectChangelog(storedVersion) {
+  const lines = [];
+  const order = CHANGELOG.order;
+  let startIdx = 0;
+  if (storedVersion) {
+    const i = order.indexOf(storedVersion);
+    startIdx = i === -1 ? 0 : i + 1;
+  }
+  const multi = order.length - startIdx > 1;
+  for (let j = startIdx; j < order.length; j++) {
+    const v = order[j];
+    if (multi) lines.push(`【v${v}】`);
+    CHANGELOG.notes[v].forEach((t) => lines.push(t));
+  }
+  return lines;
+}
+
+/** 打开信息弹窗（首次注意事项 / 升级日志） */
+function openInfoModal(title, tips, okText) {
+  document.getElementById("infoModalTitle").textContent = title;
+  const ul = document.getElementById("infoModalList");
+  ul.innerHTML = "";
+  tips.forEach((t) => {
+    const li = document.createElement("li");
+    li.textContent = t;
+    ul.appendChild(li);
+  });
+  document.getElementById("infoModalOk").textContent = okText;
+  document.getElementById("infoModalMask").classList.add("open");
+  document.getElementById("infoModal").classList.add("open");
+}
+
+/** 关闭信息弹窗并把当前版本号写入本地缓存 */
+function closeInfoModal() {
+  document.getElementById("infoModalMask").classList.remove("open");
+  document.getElementById("infoModal").classList.remove("open");
+  try { localStorage.setItem(VERSION_KEY, APP_VERSION); } catch {}
+}
+
+/** 启动版本检查：本地无值=首次使用；值≠当前版本=升级；相同=不弹 */
+function checkAppVersion() {
+  let stored = null;
+  try { stored = localStorage.getItem(VERSION_KEY); } catch {}
+  if (!stored) {
+    openInfoModal("欢迎使用 时间间隔计算器", FIRST_TIPS, "开始使用");
+  } else if (stored !== APP_VERSION) {
+    openInfoModal(`已更新到 v${APP_VERSION}`, collectChangelog(stored), "我知道了");
+  }
 }
 
 // ========== 初始化 ==========
@@ -1669,6 +1934,9 @@ if (eventList.length > 0) {
 } else {
   currentEventId = null;
   currentEventData = null;
+  if(eventList.length == 0) {
+  	newEvent()
+  };
   allResultsData = [];
   updateEventSelectorLabels();
 }
@@ -1696,6 +1964,9 @@ if (currentEventData && currentEventData.timestamps && currentEventData.timestam
   switchPage("page-result");
   switchView("day");
 }
+
+// 版本检查：首次使用弹注意事项，版本升级弹更新内容（确认后写入版本号）
+checkAppVersion();
 
 // 每秒刷新：倒计时 + 时间状态着色 + 展开的下拉
 setInterval(() => {
