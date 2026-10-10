@@ -1,7 +1,7 @@
 <!doctype html>
 <!--
   时间间隔计算器 — 主页面结构
-  三页单页应用：配置页 / 结果页 / 关于页，顶部 Tab 栏切换
+  三页单页应用：配置页 / 结果页 / 关于页，底部 Tab 栏切换
 -->
 <html lang="zh-CN">
   <head>
@@ -309,17 +309,16 @@
 
           <h3>数据备份与恢复</h3>
           <ul>
-            <li>备份：导出所有事件配置与偏好（不含计算结果）到 txt 文件</li>
-            <li>恢复：选择备份文件，确认后覆盖当前所有数据</li>
-            <li>请不要加载来源不明或被修改过的备份文件</li>
+            <li>备份：复制所有事件配置与偏好（不含计算结果）到剪贴板，请立即粘贴到备忘录或文件中妥善保存</li>
+            <li>恢复：自动读取剪贴板中的备份内容；若无法自动读取，可在弹出面板中手动粘贴，确认后覆盖当前所有数据</li>
+            <li>请不要使用来源不明或被修改过的备份内容</li>
           </ul>
           <div style="display:flex;gap:10px;margin-top:10px">
             <button class="btn-outline" style="flex:1" onclick="backupData()">备份数据</button>
-            <button class="btn-outline" style="flex:1" onclick="document.getElementById('restoreFileInput').click()">恢复数据</button>
-            <input type="file" id="restoreFileInput" accept=".txt" style="display:none" onchange="restoreData(event)" />
+            <button class="btn-outline" style="flex:1" onclick="restoreFromClipboard()">恢复数据</button>
           </div>
 
-          <p style="text-align:center;color:#bbb;font-size:12px;margin-top:24px">v1.0.0</p>
+          <p style="text-align:center;color:#bbb;font-size:12px;margin-top:24px">v1.1.0</p>
         </div>
       </div>
 
@@ -406,6 +405,44 @@
         <button class="btn-cancel" onclick="closeWheel()">取消</button>
         <button class="btn-ok" onclick="confirmWheel()">确定</button>
       </div>
+    </div>
+
+    <!-- 通用文本面板：恢复时手动粘贴 / 备份无法自动复制时手动全选 -->
+    <div class="text-mask" id="textPanelMask" onclick="closeTextPanel()"></div>
+    <div class="text-panel" id="textPanel">
+      <div class="text-panel-title" id="textPanelTitle">粘贴备份内容</div>
+      <div class="text-panel-hint" id="textPanelHint">无法自动读取剪贴板，请把之前复制的备份文本粘贴到下方：</div>
+      <textarea class="text-panel-text" id="textPanelText" dir="ltr"
+        placeholder="在此粘贴备份内容（概览+JSON 或纯 JSON）"></textarea>
+      <div class="text-panel-actions">
+        <button class="btn-outline" onclick="closeTextPanel()">取消</button>
+        <button class="btn-primary" id="textPanelOk" onclick="confirmTextPanel()">确定恢复</button>
+      </div>
+    </div>
+
+    <!-- 恢复选择面板（勾选要恢复的事件，同ID覆盖/新ID新增） -->
+    <div class="rs-mask" id="rsMask" onclick="closeRestoreSelect()"></div>
+    <div class="rs-panel" id="rsPanel">
+      <div class="rs-title">选择要恢复的事件</div>
+      <div class="rs-subtitle" id="rsSubtitle"></div>
+      <div class="rs-toolbar">
+        <button type="button" class="rs-tool-btn" onclick="setRestoreCheckAll(true)">全选</button>
+        <button type="button" class="rs-tool-btn" onclick="setRestoreCheckAll(false)">全不选</button>
+        <span class="rs-count" id="rsCount">已选 0 项</span>
+      </div>
+      <div class="rs-list" id="rsList"></div>
+      <div class="rs-actions">
+        <button class="btn-outline" onclick="closeRestoreSelect()">取消</button>
+        <button class="btn-primary" id="rsConfirm" onclick="confirmRestoreSelect()">恢复选中</button>
+      </div>
+    </div>
+
+    <!-- 信息弹窗：首次使用注意事项 / 版本升级日志（点按钮关闭并写入版本号） -->
+    <div class="info-modal-mask" id="infoModalMask"></div>
+    <div class="info-modal" id="infoModal">
+      <div class="info-modal-title" id="infoModalTitle"></div>
+      <ul class="info-modal-list" id="infoModalList"></ul>
+      <button class="btn-primary info-modal-ok" id="infoModalOk" onclick="closeInfoModal()">开始使用</button>
     </div>
 
     <script src="script.js"></script>
